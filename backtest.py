@@ -1,9 +1,6 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Created on Fri Mar 23 22:19:04 2018
-
-@author: DiegoCarlo
 """
 
 import getpass as gp
