@@ -2,8 +2,6 @@
 # -*- coding: utf-8 -*-
 """
 Created on Tue Mar  6 15:47:24 2018
-
-@author: Moritz
 """
 
 import getpass as gp
