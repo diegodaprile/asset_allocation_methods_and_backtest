@@ -41,6 +41,8 @@ import scipy.cluster.hierarchy as sch
 from scipy.cluster.hierarchy import dendrogram, linkage
 from scipy.spatial.distance import pdist
 from scipy.cluster.hierarchy import cophenet
+import scipy.integrate as integrate
+import scipy.special as special
 
 # others
 import getpass as gp
@@ -53,12 +55,13 @@ import seaborn as sns
 from collections import OrderedDict
 import sklearn.covariance
 from sklearn.covariance import ledoit_wolf as LW, oas,  shrunk_covariance
-import cvxopt as opt
-from cvxopt import blas, solvers
+#import cvxopt as opt
+#from cvxopt import blas, solvers
 import empyrical as ep
 from datetime import datetime
 from datetime import timedelta
 from dateutil.relativedelta import relativedelta
+import statsmodels.api as sm
 
 # General Attributes
 
@@ -66,7 +69,7 @@ name = gp.getuser()
 
 np.random.seed(123)
 
-solvers.options['show_progress'] = False
+#solvers.options['show_progress'] = False
 
 
 # #############################################################################
@@ -83,7 +86,7 @@ def get_Data(freq, years):
     #import from excel file with worksheet name Return_Data
     file = 'MSCI_8_Indices.xlsx'
     xl = pd.ExcelFile(file)
-    returns = xl.parse('Return_Data_%s' %freq,index_col = 'Code')#, parse_dates = True)
+    returns = xl.parse('Return_Data_%s' %freq, index_col = 'Code')#, parse_dates = True)
     xl = pd.ExcelFile('TBill_Data.xlsx')
     rf_rate = xl.parse('3M_US_%s' %freq, index_col = 'Code')
     if freq == 'M':
@@ -129,6 +132,23 @@ def PF_return(w, r):
         r = np.asmatrix(r).T
     R_PF = np.dot(w.T, r)
     return float(R_PF)
+
+def PF_return_risky_rf(w_risky, w_portfolio, mean_risky, rf):
+    # w_risky is the amount to invest in the risky asset
+    #w_portfolio represent the portfolio weights, that sum to 1
+    
+    w_portfolio = w_risky * w_portfolio
+    ret_risky_part = PF_return(w_portfolio, mean_risky)
+    
+    w_rf = 1 - w_risky
+    ret_rf_part = w_rf * rf
+    
+    return float(ret_risky_part + ret_rf_part)
+
+def PF_sigma_risky_rf(w_risky, w_portfolio, varCovar):
+    # w_risky is the amount to invest in the risky asset
+    #w_portfolio represent the portfolio weights, that sum to 1
+    return float(abs(w_risky) * np.sqrt(PF_variance(w_portfolio, varCovar)))
 
 def muRet(returns):
     '''Calculate meean return of return data'''
@@ -222,7 +242,8 @@ def is_pos_def(x):
 
 # #############################################################################
 
-
+def weight_risky_assets(pf_ret, rf, pf_sigma, gamma):
+    return (pf_ret - rf)/(gamma * pf_sigma ** 2)
 
 #define function to calculate A,B,C,D (Munk)
 def var_all(mu,Sigma):
@@ -292,6 +313,8 @@ def maxSRPF(returns, rf):
     return weights
 
 def maxSRPF1(meanRet, varCovar, rf):
+    #meanRet and varCovar are the expected return and variance covariance matrix of simple returns (NOT EXCESS R.)
+    #the output is the fraction invested on each single risky asset (they sum to one)
     rf = np.float(rf)
     varB = np.float(var_B(meanRet, varCovar))
     varC = np.float(var_C(varCovar))
@@ -300,10 +323,10 @@ def maxSRPF1(meanRet, varCovar, rf):
                        np.array(meanRet - (rf))).T)
     return weights.T
 
-def tangWeights(meanExcRet, varCovar, rf, gamma):
-    varB = var_B(meanExcRet, varCovar)
-    varC = var_C(varCovar)
-    weights = 1 / (gamma) * np.dot(mat_inv(varCovar), meanExcRet)
+def tangWeights(meanExcRet, varCovarExcRet, gamma):
+    #both meanExcRet and varCovar refer to excess returns
+    #the output is the weight on each single risky asset. Risk free weight = 1 - weights.sum()
+    weights = 1 / (gamma) * np.dot(mat_inv(varCovarExcRet), meanExcRet)
     return weights
 
 def maxSlopePortfolio(meanRet, varCovarMatrix):
@@ -319,7 +342,37 @@ def meanVarPF(meanRet, varCovar, m_bar):
     pi = (C * m_bar - B) / D * np.dot(inv, meanRet) + (A - B * m_bar) / D * np.dot(inv, ones)
     return pi
 
+def threeFundSeparation(mu_hat, varCov, estLength, gamma):
 
+    nAssets = len(mu_hat)
+    ones = np.asmatrix(np.ones(nAssets, dtype = float)).T    
+    T = estLength
+    N = nAssets
+    c_three = (T - N - 1.)*(T - N - 4)/(T * (T - 2))
+    covInv = np.linalg.inv(varCov)
+    mu_hat_g = float(np.dot(ones.T, np.dot(covInv, mu_hat)) / np.dot(ones.T, np.dot(covInv, ones)))
+    diff = mu_hat - np.multiply(mu_hat_g, ones)
+    psi_hat_sq = float(np.dot(diff.T, np.dot(np.linalg.inv(varCov), diff)))
+
+    first = ((T - N - 1.) * psi_hat_sq - (N - 1.)) / T
+    sec = 2. * (psi_hat_sq ** ((N - 1.)/2.)) * ((1. + psi_hat_sq) ** (- (T - 2.) / 2.))
+    #low_limit = 0
+    up_limit = psi_hat_sq / (1. + psi_hat_sq)
+    a = (N - 1.) / 2
+    b = (T - N + 1.) / 2
+    #def incomplete_beta(x, a, b):
+    #    return x**(a - 1) * (1 - x)**(b - 1)
+    #
+    #integration = integrate.quad(incomplete_beta, low_limit, up_limit, args = (a, b))
+    integration = special.betainc(a, b, up_limit) 
+    third = T * integration
+    psi_hat_sq_unbiased = first + sec / third
+    ratio_1 =  psi_hat_sq_unbiased / (psi_hat_sq_unbiased + (N/T))
+    ratio_2 = (N/T) / (psi_hat_sq_unbiased+ (N/T))
+    
+    weights_three_fund = (c_three / gamma ) * ( ratio_1  * np.dot(covInv, mu_hat) + ratio_2 * mu_hat_g * np.dot(covInv, ones) )
+    
+    return weights_three_fund
 
 # #############################################################################
     
@@ -328,14 +381,14 @@ def meanVarPF(meanRet, varCovar, m_bar):
 # #############################################################################
     
 def optSigma(returns, epsilon, gamma):
-    '''needs to be called with from numpy.polynomial import Polynomial as poly '''
+
     '''calculate the root of the polynomial so that an optimal portfolio variance exists'''
     '''Input parameters: array of return data, ambiguity aversion = epsilon, risk aversion = gamma'''
     mu = np.mean(returns, axis = 0)
     Sigma = np.cov(returns.T, ddof= 1)
     T = returns.shape[0]
     N = returns.shape[1]
-    varepsilon = epsilon * ((T - 1) * N)/(T * (T - N))
+    varepsilon = epsilon * ((T - 1.) * N)/(T * (T - N))
     C = var_C(Sigma)
     B = var_B(mu, Sigma)
     A = var_A(mu, Sigma)
@@ -364,7 +417,7 @@ def GWweights(returns, epsilon, gamma):
     Sigma = varCovar(returns)
     invSigma = mat_inv(Sigma)
     T, N = returns.shape
-    varepsilon = epsilon * ((T - 1) * N)/(T * (T - N))
+    varepsilon = epsilon * ((T - 1.) * N)/(T * (T - N))
     B = var_B(mu, Sigma)
     C = var_C(Sigma)
     ones = np.ones(np.sqrt(Sigma.size).astype(np.int))
@@ -377,12 +430,12 @@ def GWweights1(returns, muRet, varcovar, epsilon, gamma):
     sigmap = optSigma1(returns, muRet, varcovar, epsilon, gamma)
     invSigma = mat_inv(varcovar)
     T, N = returns.shape
-    varepsilon = epsilon * ((T - 1) * N)/(T * (T - N))
+    varepsilon = epsilon * ((T - 1.) * N)/(T * (T - N))
     B = var_B(muRet, varcovar)
     C = var_C(varcovar)
     ones = np.ones(varcovar.shape[0])
     pi =    (np.dot(((1. / gamma) * invSigma) ,
-                    ((1. / (1 + np.sqrt(varepsilon)/(gamma * sigmap)))
+                    ((1. / (1. + np.sqrt(varepsilon)/(gamma * sigmap)))
             * np.subtract(muRet, (B - gamma * (1 + np.sqrt(varepsilon)/(gamma * sigmap))) / C * ones)[:,0])))
     return pi
     
@@ -394,15 +447,15 @@ def optSigma1(returns, muRet, varcovar, epsilon, gamma):
 
     T = returns.shape[0]
     N = returns.shape[1]
-    varepsilon = epsilon * ((T - 1) * N)/(T * (T - N))
+    varepsilon = epsilon * ((T - 1.) * N)/(T * (T - N))
     
     C = var_C(varcovar)
     B = var_B(muRet, varcovar)
     A = var_A(muRet, varcovar)
     
-    equation = np.array([- varepsilon, - 2 * gamma * np.sqrt(varepsilon), 
+    equation = np.array([- varepsilon, - 2. * gamma * np.sqrt(varepsilon), 
           (C * varepsilon - A * C + B ** 2 - gamma ** 2), 
-          + 2 * C * gamma * np.sqrt(varepsilon), 
+          + 2. * C * gamma * np.sqrt(varepsilon), 
           C * gamma ** 2])    
     roots = poly.polyroots(equation)
     optsigma = np.real(np.extract(roots > 0 , roots)[0])
@@ -414,8 +467,24 @@ def optSigma1(returns, muRet, varcovar, epsilon, gamma):
     else: 
         print("Polynomial does not yield any positive solution")
 
-
-
+    
+def varying_epsilon(exreturns, marketReturns, rf):
+    '''calculates a value of epsilon depending on Jensen's Alpha'''
+    alpha = []
+    X = marketReturns - rf
+    X1 = sm.add_constant(X)
+    y = exreturns
+    for i in range(exreturns.shape[1]):
+        model = sm.OLS(y[:,i], X1)
+        results = model.fit()
+        alpha.append(results.params[0])
+    np_alpha = np.array(alpha)
+    alpha_annualized = (1 + np_alpha) ** 12 - 1
+    MAD_alpha = np.mean(abs(alpha_annualized))
+    #    epsilon = 20 * np.tanh(15 * MAD_alpha)
+    epsilon = 25 * MAD_alpha
+    return epsilon
+    
 
 
 # #############################################################################
@@ -487,11 +556,11 @@ def long_only_constraint(x):
 # LPM portfolio optimization
 # #############################################################################
 
-def lpm_port(estMu, corrReturns):
+def lpm_port(estMu, corrReturns, exp_ret_chosen = 0.02 / 12):
     global exp_ret_chosen_LPM
     global exprets_LPM
     exprets_LPM = estMu
-    exp_ret_chosen_LPM = 0.02 / 12    
+    exp_ret_chosen_LPM = exp_ret_chosen
     nAssets = len(estMu)
     def expected_return_constraint_LPM(x):
         if len(x.shape)==1:
@@ -778,6 +847,17 @@ def InformationRatio(returns, marketReturns):
     slope, intercept, r_value, p_value, std_err = stats.linregress(X, y)
     return intercept / slope
 
+def turnover(weights_t_0, return_t, weights_t_1):
+    if len(weights_t_0.shape)==1:
+        weights_t_0 = np.asmatrix(weights_t_0).T
+    if len(weights_t_1.shape)==1:
+        weights_t_1 = np.asmatrix(weights_t_1).T
+    if len(return_t.shape)==1:
+        return_t = np.asmatrix(return_t).T
+    weights_end_t_0 = np.multiply(weights_t_0 , (1 + return_t))
+    diff_weights = abs(weights_t_1 - weights_end_t_0)
+    return sum(diff_weights)[0,0]
+
 def LowerPartialMoments(returns, target = 0, order = 2):
     # This method returns a lower partial moment of the returns
     # Create an array he same length as returns containing the minimum return target
@@ -884,9 +964,10 @@ def MaximumDrawDown(returns):
     return abs(max_drawdown)
     
 
-def AverageDrawDown(returns, periods = 60):
+def AverageDrawDown(returns):
     # Returns the average maximum drawdown over n periods
     drawdowns = []
+    periods = len(returns)
     for i in range(0, len(returns)):
         drawdown_i = DrawDown(returns, i)
         drawdowns.append(drawdown_i)
@@ -1002,7 +1083,7 @@ def utility(estimatedWeights, gamma):
 
 # #############################################################################
     
-# Plotting Functioncs
+# Plotting Functions
 
 # #############################################################################
 
