@@ -3,6 +3,14 @@
 Created on Fri Mar 23 22:18:19 2018
 """
 
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Mar 23 22:18:19 2018
+
+@author: DiegoCarlo
+"""
+
 
 import getpass as gp
 global name 
@@ -12,16 +20,18 @@ import os
 #import numpy as np
 #import matplotlib.pyplot as plt
 import sys
-sys.path.append('/Users/path_to_append/' %name)
+sys.path.append('/Users/%s/OneDrive/Master Thesis/Data/Analysis_Skripts/Library/' %name)
 from Functions import *
 #IMPORT THE BACKTEST MODULE
-from backtest import backtester_NEW2 as BACKTEST
+from backtest_Diego import backtester_NEW2 as BACKTEST
 
 
-freq = 'M'
-years = 5
+start = "1990-03-12"
+end = "1996-03-12"
+file = 'minvarPortfoliosM8.csv'
+gamma = 1
 
-START, END, FILE = "1980-03-12", "1990-03-12", 'MVPortfoliosM5Y.csv'
+retAssets, retPF, performance = BACKTEST(start, end, file, True)
 
-retAssets, retPF, performance = BACKTEST(start = START, end = END, file = FILE)
 
+#check the output in the following folder: '/Users/name/OneDrive/Master Thesis/Data/Portfolios/backtesting/date of backtestin.
