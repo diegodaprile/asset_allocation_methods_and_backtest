@@ -1,8 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Feb 21 10:52:58 2018
-"""
-
 # #############################################################################
     
 # Table of Content
@@ -35,7 +30,7 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as colormap
 
 # scipy
-from scipy.stats import trim_mean, kurtosis
+from scipy.stats import trim_mean, kurtosis, beta
 from scipy.stats.mstats import mode, gmean, hmean, winsorize
 import scipy.cluster.hierarchy as sch
 from scipy.cluster.hierarchy import dendrogram, linkage
@@ -84,28 +79,31 @@ def get_Data(freq, years):
     #change directory
     os.chdir("/Users/%s/OneDrive/Master Thesis/Data" %name)
     #import from excel file with worksheet name Return_Data
-    file = 'MSCI_8_Indices.xlsx'
+    file = 'data_main.xlsx'
     xl = pd.ExcelFile(file)
-    returns = xl.parse('Return_Data_%s' %freq, index_col = 'Code')#, parse_dates = True)
-    xl = pd.ExcelFile('TBill_Data.xlsx')
-    rf_rate = xl.parse('3M_US_%s' %freq, index_col = 'Code')
-    if freq == 'M':
-        multiplier = 12
-    elif freq == 'W':
-        multiplier = 52
-    elif freq == 'D':
-        multiplier = 250
-    else:
-        print('No correct input for frequency given!!!')
-    estLength = years * multiplier
+    returns = xl.parse('Return_Data_M', index_col = 'Code')
+    rf_rate = xl.parse('yields', index_col = 'Code')[:-1]
+    estLength = years * 12
     nAssets = len(returns.columns)
-    
-    market_name = 'MSCI_World.xlsx'
-    xl_market = pd.ExcelFile(market_name)
-    market = xl_market.parse('returns_%s' %freq, index_col = 'Code')
+    market = xl.parse('market', index_col = 'Code')
     
     return returns, rf_rate, market, estLength, nAssets
 
+
+
+def get_Data_control(freq, years):
+    #    globals() [returns, rf_rate, estLength, nAssets]
+    #change directory
+    os.chdir("/Users/%s/OneDrive/Master Thesis/Data" %name)
+    #import from excel file with worksheet name Return_Data
+    file = 'data_control.xlsx'
+    xl = pd.ExcelFile(file)
+    returns = xl.parse('Return_Data_M', index_col = 'Code')
+    rf_rate = xl.parse('yields', index_col = 'Code')
+    market = xl.parse('market', index_col = 'Code')
+    nAssets = len(returns.columns)
+    estLength = years * 12    
+    return returns, rf_rate, market, estLength, nAssets
 
 #define function for a vector of n random weights that sum up to 1
 def rand_weights(n):
@@ -122,7 +120,7 @@ def PF_variance(w, S):
 
 def PF_volatility(w, S):
     S_PF = np.sqrt(PF_variance(w,S))
-    return S_PF
+    return float(S_PF)
 
 #define function to calculate mean portfolio return
 def PF_return(w, r):
@@ -185,7 +183,30 @@ def convertCSV_toDataframe(name, sep = ',', index_col = 0):
     
     return pd.DataFrame(df.values, index = dates, columns = indices)
 
+
+def convertCSV_toDataframeTEST(name, sep = ',', index_col = 0):
+    
+    df = pd.read_csv(name, sep = ',', index_col = 0)
+    try:
+        dates = [datetime.strptime(df.index.values[i], "%Y-%m-%d") for i in range(len(df.index.values))]
+    except ValueError:
+        dates = [datetime.strptime(df.index.values[i], "%d/%m/%Y") for i in range(len(df.index.values))]
+    indices = df.columns.values.tolist()
+    
+    return pd.DataFrame(df.values, index = dates, columns = indices)
+
+
+def convertCSV_toDataframe_to_date(name, sep = ',', index_col = 0):
+    
+    df = pd.read_csv(name, sep = ',', index_col = 0)
+    dates = [datetime.strptime(df.index.values[i], "%Y-%m-%d").date() for i in range(len(df.index.values))]
+    indices = df.columns.values.tolist()
+    
+    return pd.DataFrame(df.values, index = dates, columns = indices)
+
  
+    
+
 #define function to calculate matrix inverse
 def mat_inv(a):
     inv = np.linalg.inv(a)
@@ -242,6 +263,7 @@ def is_pos_def(x):
 
 # #############################################################################
 
+
 def weight_risky_assets(pf_ret, rf, pf_sigma, gamma):
     return (pf_ret - rf)/(gamma * pf_sigma ** 2)
 
@@ -278,17 +300,35 @@ def var_D(mu, Sigma):
     varD = varA * varC - varB ** 2
     return float(varD)
 
-def maxSlopePF(returns):
-    meanRet = returns.mean(axis=0)
-    varCovar = np.cov(returns.T, ddof=1)
-    maxSlopeWeights = (1 / var_B(meanRet, varCovar)
-                             * np.dot(mat_inv(varCovar), meanRet))
-    return maxSlopeWeights 
 
-def maxSlopePF1(meanRet, varCovar):
-    maxSlopeWeights = np.array(np.multiply(1 / var_B(meanRet, varCovar),
-                              np.dot(mat_inv(varCovar), meanRet)))
-    return maxSlopeWeights 
+def meanVarPF_one_fund(meanRet, varCovar, gamma):
+    first = mat_inv(varCovar)
+    second = meanRet - (var_B(meanRet, varCovar)-gamma)/var_C(varCovar)
+    meanVarWeights = np.array(np.multiply(1 / gamma,
+                              np.dot(first, second)))
+    return meanVarWeights
+
+def meanVarPF_one_fund_noshort(meanRet, varCovar, gamma):
+    cons = ({'type': 'ineq', 'fun': long_only_constraint},{'type' : 'eq', 'fun' : weight_constraint })
+    nAssets = varCovar.shape[0]
+    w_0 = rand_weights(nAssets)
+    res = minimize(meanVar_objective,
+                   w_0,
+                   args = [meanRet, varCovar, gamma],
+                   method = 'SLSQP',
+                   constraints = cons,
+                   options={'ftol': 1e-8, 'maxiter' : 45, 'disp' : False})
+    weights = np.asmatrix(res.x).T
+    return weights
+
+def meanVar_objective(x, args):
+    meanRet = args[0]
+    varCovar = args[1]
+    gamma = args[2]
+    mu = PF_return(x, meanRet)
+    sigma = PF_volatility(x, varCovar)
+    J = - utility_MV(mu, sigma, gamma)
+    return J
 
 def minVarPF(returns):
     estSigma = np.cov(returns.T, ddof=1)
@@ -300,6 +340,19 @@ def minVarPF1(varCovar):
     oneVector = np.ones(varCovar.shape[0])
     weights = np.array(np.multiply(1 / (var_C(varCovar)), np.dot(mat_inv(varCovar), oneVector)))
     return weights.T
+
+def minVarPF_noshort(varCovar):
+    cons = ({'type': 'ineq', 'fun': long_only_constraint},{'type' : 'eq', 'fun' : weight_constraint })
+    nAssets = varCovar.shape[0]
+    w_0 = rand_weights(nAssets)
+    res = minimize(PF_variance,
+                   w_0,
+                   varCovar,
+                   method = 'SLSQP',
+                   constraints = cons,
+                   options={'ftol': 1e-8, 'maxiter' : 45, 'disp' : False})
+    weights = np.asmatrix(res.x).T
+    return weights
 
 def maxSRPF(returns, rf):
     oneVector = np.asmatrix(np.ones(returns.shape[0])).T
@@ -323,6 +376,28 @@ def maxSRPF1(meanRet, varCovar, rf):
                        np.array(meanRet - (rf))).T)
     return weights.T
 
+def maxSRPF_noshort(meanRet, varCovar, rf):
+    cons = ({'type': 'ineq', 'fun': long_only_constraint},{'type' : 'eq', 'fun' : weight_constraint })
+    nAssets = varCovar.shape[0]
+    w_0 = rand_weights(nAssets)
+    res = minimize(SR_objective,
+                   w_0,
+                   args = [meanRet, varCovar, rf],
+                   method = 'SLSQP',
+                   constraints = cons,
+                   options={'ftol': 1e-8, 'maxiter' : 45, 'disp' : False})
+    weights = np.asmatrix(res.x).T
+    return weights
+
+def SR_objective(x, args):
+    meanRet = args[0]
+    varCovar = args[1]
+    rf = args[2]
+    r_p = np.dot(x.T, meanRet)
+    sigma_p = np.sqrt(PF_variance(x, varCovar))
+    SR = (r_p-rf)/sigma_p
+    return -SR
+
 def tangWeights(meanExcRet, varCovarExcRet, gamma):
     #both meanExcRet and varCovar refer to excess returns
     #the output is the weight on each single risky asset. Risk free weight = 1 - weights.sum()
@@ -342,37 +417,76 @@ def meanVarPF(meanRet, varCovar, m_bar):
     pi = (C * m_bar - B) / D * np.dot(inv, meanRet) + (A - B * m_bar) / D * np.dot(inv, ones)
     return pi
 
-def threeFundSeparation(mu_hat, varCov, estLength, gamma):
-
+def threeFundSeparation(mu_hat, varCov, estLength, gamma, rf):
+    mu_hat_exc = mu_hat - rf
     nAssets = len(mu_hat)
     ones = np.asmatrix(np.ones(nAssets, dtype = float)).T    
-    T = estLength
-    N = nAssets
-    c_three = (T - N - 1.)*(T - N - 4)/(T * (T - 2))
+    T = float(estLength)
+    N = float(nAssets)
+    c_three = ((T - N - 1.)*(T - N - 4.))/(T * (T - 2.))
     covInv = np.linalg.inv(varCov)
-    mu_hat_g = float(np.dot(ones.T, np.dot(covInv, mu_hat)) / np.dot(ones.T, np.dot(covInv, ones)))
-    diff = mu_hat - np.multiply(mu_hat_g, ones)
-    psi_hat_sq = float(np.dot(diff.T, np.dot(np.linalg.inv(varCov), diff)))
+    mu_hat_g = ((np.dot(ones.T, np.dot(covInv, mu_hat_exc))
+                / np.dot(ones.T, np.dot(covInv, ones))))[0,0]
+    diff = mu_hat_exc - mu_hat_g
+    psi_hat_sq = float(np.dot(diff.T, np.dot(covInv, diff)))
 
     first = ((T - N - 1.) * psi_hat_sq - (N - 1.)) / T
-    sec = 2. * (psi_hat_sq ** ((N - 1.)/2.)) * ((1. + psi_hat_sq) ** (- (T - 2.) / 2.))
-    #low_limit = 0
+    sec = (2. * (psi_hat_sq ** ((N - 1.)/2.)) 
+            * ((1. + psi_hat_sq) ** (- (T - 2.) / 2.)))
+
     up_limit = psi_hat_sq / (1. + psi_hat_sq)
-    a = (N - 1.) / 2
-    b = (T - N + 1.) / 2
-    #def incomplete_beta(x, a, b):
-    #    return x**(a - 1) * (1 - x)**(b - 1)
-    #
-    #integration = integrate.quad(incomplete_beta, low_limit, up_limit, args = (a, b))
-    integration = special.betainc(a, b, up_limit) 
+    a = (N - 1.) / 2.
+    b = (T - N + 1.) / 2.
+    integration = special.betainc(a, b, up_limit) * special.beta(a, b)
+    
     third = T * integration
     psi_hat_sq_unbiased = first + sec / third
-    ratio_1 =  psi_hat_sq_unbiased / (psi_hat_sq_unbiased + (N/T))
-    ratio_2 = (N/T) / (psi_hat_sq_unbiased+ (N/T))
+    ratio_1 =  psi_hat_sq_unbiased / (psi_hat_sq_unbiased + (N / T))
+    ratio_2 = (N / T) / (psi_hat_sq_unbiased + (N / T))
     
-    weights_three_fund = (c_three / gamma ) * ( ratio_1  * np.dot(covInv, mu_hat) + ratio_2 * mu_hat_g * np.dot(covInv, ones) )
+    weights_three_fund = ((c_three / gamma )  
+                         * ( ratio_1  * np.dot(covInv, mu_hat_exc) 
+                         + ratio_2 * mu_hat_g * np.dot(covInv, ones) ))
+    
+#    weights_scaled = weights_three_fund / weights_three_fund.sum() 
     
     return weights_three_fund
+
+
+def threeFundSeparationEMP(mu_hat_exc, varCov, estLength, gamma):
+    
+    nAssets = len(mu_hat_exc)
+    ones = np.asmatrix(np.ones(nAssets, dtype = float)).T    
+    T = float(estLength)
+    N = float(nAssets)
+    c_three = ((T - N - 1.)*(T - N - 4.))/(T * (T - 2.))
+    covInv = np.linalg.inv(varCov)
+    mu_hat_g = ((np.dot(ones.T, np.dot(covInv, mu_hat_exc))
+                / np.dot(ones.T, np.dot(covInv, ones))))[0,0]
+    diff = mu_hat_exc - mu_hat_g
+    psi_hat_sq = float(np.dot(diff.T, np.dot(covInv, diff)))
+
+    first = ((T - N - 1.) * psi_hat_sq - (N - 1.)) / T
+    sec = (2. * (psi_hat_sq ** ((N - 1.)/2.)) 
+            * ((1. + psi_hat_sq) ** (- (T - 2.) / 2.)))
+
+    up_limit = psi_hat_sq / (1. + psi_hat_sq)
+    a = (N - 1.) / 2.
+    b = (T - N + 1.) / 2.
+    integration = special.betainc(a, b, up_limit) * special.beta(a, b)
+    
+    third = T * integration
+    psi_hat_sq_unbiased = first + sec / third
+    ratio_1 =  psi_hat_sq_unbiased / (psi_hat_sq_unbiased + (N / T))
+    ratio_2 = (N / T) / (psi_hat_sq_unbiased + (N / T))
+    
+    weights_three_fund = ((c_three / gamma )  
+                         * ( ratio_1  * np.dot(covInv, mu_hat_exc) 
+                         + ratio_2 * mu_hat_g * np.dot(covInv, ones) ))
+    
+    weights_scaled = weights_three_fund / weights_three_fund.sum() 
+    
+    return weights_scaled
 
 # #############################################################################
     
@@ -385,6 +499,7 @@ def optSigma(returns, epsilon, gamma):
     '''calculate the root of the polynomial so that an optimal portfolio variance exists'''
     '''Input parameters: array of return data, ambiguity aversion = epsilon, risk aversion = gamma'''
     mu = np.mean(returns, axis = 0)
+
     Sigma = np.cov(returns.T, ddof= 1)
     T = returns.shape[0]
     N = returns.shape[1]
@@ -398,7 +513,11 @@ def optSigma(returns, epsilon, gamma):
           + 2 * C * gamma * np.sqrt(varepsilon), 
           C * gamma ** 2])    
     roots = poly.polyroots(equation)
-    optsigma = np.real(np.extract(roots > 0 , roots)[0])
+    test = np.extract(roots > 0 , roots)
+    if len(test) == 0:
+        optsigma = 0
+    else:
+        optsigma = np.real(np.extract(roots > 0 , roots)[0])
     check = sum(x > 0 for x in roots)
     if check > 1:
         print("Polynomial yields more than one Solution")
@@ -434,10 +553,65 @@ def GWweights1(returns, muRet, varcovar, epsilon, gamma):
     B = var_B(muRet, varcovar)
     C = var_C(varcovar)
     ones = np.ones(varcovar.shape[0])
-    pi =    (np.dot(((1. / gamma) * invSigma) ,
+    pi =  (np.dot(((1. / gamma) * invSigma) ,
                     ((1. / (1. + np.sqrt(varepsilon)/(gamma * sigmap)))
             * np.subtract(muRet, (B - gamma * (1 + np.sqrt(varepsilon)/(gamma * sigmap))) / C * ones)[:,0])))
     return pi
+
+
+def GWweights2(returns, muRet, varcovar, epsilon, gamma):
+    '''calculates the optimal portfolio weights under Garlappi Wang assumptions'''
+    T, N = returns.shape
+    sigmap = optSigma2(returns, muRet, varcovar, epsilon, gamma)
+    if sigmap == 10:
+        pi = 10 * np.ones(N)
+        return pi
+    else:
+        invSigma = mat_inv(varcovar)
+        varepsilon = epsilon * ((T - 1.) * N)/(T * (T - N))
+        B = var_B(muRet, varcovar)
+        C = var_C(varcovar)
+        ones = np.ones(varcovar.shape[0])
+        pi =  (np.dot(((1. / gamma) * invSigma) ,
+                        ((1. / (1. + np.sqrt(varepsilon)/(gamma * sigmap)))
+                * np.subtract(muRet, (B - gamma * (1 + np.sqrt(varepsilon)/(gamma * sigmap))) / C * ones)[:,0])))
+        return pi
+
+
+
+
+def GWweights_noshort(returns, meanRet, varCovar, epsilon, gamma):
+    cons = ({'type': 'ineq', 'fun': long_only_constraint},
+            {'type' : 'eq', 'fun' : weight_constraint })
+    estLength = returns.shape[0]
+    nAssets = returns.shape[1]
+    w_0 = rand_weights(nAssets)
+    res = minimize(GW_objective,
+                   w_0,
+                   args = [meanRet, varCovar, gamma, epsilon, estLength, nAssets],
+                   method = 'SLSQP',
+                   constraints = cons,
+                   options={'ftol': 1e-8, 'maxiter' : 50, 'disp' : False})
+    weights = np.asmatrix(res.x).T
+    return weights
+
+def GW_objective(x, args):
+    meanRet = args[0]
+    varCovar = args[1]
+    gamma = args[2]
+    epsilon = args[3]
+    T = args[4]
+    N = args[5]
+    vareps = epsilon * ((T - 1) * N) / (T * (T - N))
+    
+    r_p = np.dot(x.T,meanRet)
+    sigma_p = np.sqrt(PF_variance(x, varCovar))
+    
+    first = r_p 
+    second = - gamma / 2 * sigma_p ** 2 * (1 + (2 * np.sqrt(vareps)) / 
+                                           (gamma * sigma_p))
+    objective = first + second
+    return -objective
     
     
 def optSigma1(returns, muRet, varcovar, epsilon, gamma):
@@ -445,9 +619,9 @@ def optSigma1(returns, muRet, varcovar, epsilon, gamma):
     '''calculate the root of the polynomial so that an optimal portfolio variance exists'''
     '''Input parameters: array of return data, ambiguity aversion = epsilon, risk aversion = gamma'''
 
-    T = returns.shape[0]
-    N = returns.shape[1]
-    varepsilon = epsilon * ((T - 1.) * N)/(T * (T - N))
+    T = float(returns.shape[0])
+    N = float(returns.shape[1])
+    varepsilon = float(epsilon) * ((T - 1.) * N)/(T * (T - N))
     
     C = var_C(varcovar)
     B = var_B(muRet, varcovar)
@@ -459,6 +633,7 @@ def optSigma1(returns, muRet, varcovar, epsilon, gamma):
           C * gamma ** 2])    
     roots = poly.polyroots(equation)
     optsigma = np.real(np.extract(roots > 0 , roots)[0])
+    
     check = sum(x > 0 for x in roots)
     if check > 1:
         print("Polynomial yields more than one Solution")
@@ -466,6 +641,40 @@ def optSigma1(returns, muRet, varcovar, epsilon, gamma):
         return optsigma
     else: 
         print("Polynomial does not yield any positive solution")
+
+def optSigma2(returns, muRet, varcovar, epsilon, gamma):
+    '''needs to be called with from numpy.polynomial import Polynomial as poly '''
+    '''calculate the root of the polynomial so that an optimal portfolio variance exists'''
+    '''Input parameters: array of return data, ambiguity aversion = epsilon, risk aversion = gamma'''
+
+    T = float(returns.shape[0])
+    N = float(returns.shape[1])
+    varepsilon = float(epsilon) * ((T - 1.) * N)/(T * (T - N))
+    
+    C = var_C(varcovar)
+    B = var_B(muRet, varcovar)
+    A = var_A(muRet, varcovar)
+    
+    equation = np.array([- varepsilon, - 2. * gamma * np.sqrt(varepsilon), 
+          (C * varepsilon - A * C + B ** 2 - gamma ** 2), 
+          + 2. * C * gamma * np.sqrt(varepsilon), 
+          C * gamma ** 2])    
+
+    roots = poly.polyroots(equation)
+    test = np.extract(roots > 0 , roots)
+    check = sum(x > 0 for x in roots)
+
+    if len(test) == 0:
+        return 10
+    elif check > 1:
+        print("Polynomial yields more than one Solution")
+    elif check == 1:
+        optsigma = np.real(np.extract(roots > 0 , roots)[0])
+        return optsigma
+    else: 
+        print("Polynomial does not yield any positive solution")
+
+
 
     
 def varying_epsilon(exreturns, marketReturns, rf):
@@ -498,8 +707,8 @@ from scipy.optimize import minimize
 def riskParity(varCov):
     #calculates the risk parity portfolio weights
     '''set constraints for optimization'''
-    cons = ({'type' : 'eq', 'fun' : weight_constraint },
-            {'type': 'ineq', 'fun': long_only_constraint})
+    cons = ({'type' : 'eq', 'fun' : weight_constraint })
+#    ,{'type': 'ineq', 'fun': long_only_constraint})
     '''set input parameters for optimization'''
     nAssets = varCov.shape[0]
     x_t = np.ones(nAssets)/nAssets #equal risk contribution target vector
@@ -510,9 +719,29 @@ def riskParity(varCov):
                    args=[varCov, x_t],
                    method = 'SLSQP',
                    constraints = cons,
-                   options={'ftol': 1e-12, 'maxiter' : 400, 'disp' : False})    
+                   options={'ftol': 1e-8, 'maxiter' : 45, 'disp' : False})    
     w_RP = np.asmatrix(res.x).T
     return w_RP
+
+
+def riskParity_noshort(varCov):
+    #calculates the risk parity portfolio weights
+    '''set constraints for optimization'''
+    cons = ({'type' : 'eq', 'fun' : weight_constraint }
+            ,{'type': 'ineq', 'fun': long_only_constraint})
+    '''set input parameters for optimization'''
+    nAssets = varCov.shape[0]
+    x_t = np.ones(nAssets)/nAssets #equal risk contribution target vector
+    w_0 = rand_weights(nAssets) #initial weights from which to start opimization
+    #variance covariance matrix
+    res = minimize(risk_objective,
+                   w_0,
+                   args=[varCov, x_t],
+                   method = 'SLSQP',
+                   constraints = cons,
+                   options={'ftol': 1e-8, 'maxiter' : 45, 'disp' : False})    
+    weights = np.asmatrix(res.x).T
+    return weights
 
 
 def risk_contribution(weights, varCov):
@@ -540,7 +769,7 @@ def risk_objective(x, args):
     #problem is this
     diff = risk_contribution(x, Variance) - risk_target
     opt_pi = [i**2 for i in diff]
-    J = np.multiply(100000 , sum(opt_pi))
+    J = np.multiply(10000 , sum(opt_pi))
     return float(J)
 
 def weight_constraint(x):
@@ -556,11 +785,11 @@ def long_only_constraint(x):
 # LPM portfolio optimization
 # #############################################################################
 
-def lpm_port(estMu, corrReturns, exp_ret_chosen = 0.02 / 12):
+def lpm_port(estMu, corrReturns, exp_ret_chosen = 0.02):
     global exp_ret_chosen_LPM
     global exprets_LPM
     exprets_LPM = estMu
-    exp_ret_chosen_LPM = exp_ret_chosen
+    exp_ret_chosen_LPM = exp_ret_chosen / 12
     nAssets = len(estMu)
     def expected_return_constraint_LPM(x):
         if len(x.shape)==1:
@@ -587,35 +816,49 @@ def lpm_port(estMu, corrReturns, exp_ret_chosen = 0.02 / 12):
                             args = [exp_ret_chosen_LPM, corrReturns],
                             method = 'SLSQP', 
                             constraints = cons,
-                            options={'ftol': 1e-12, 'maxiter' : 45, 'disp' : False})
+                            options={'ftol': 1e-8, 'maxiter' : 45, 'disp' : False})
     PF_weights_LPM = np.asmatrix(optimization.x).T
     return PF_weights_LPM
     
-#
-##function to minimize
-#def LPM_PF_optimization(x, args):
-#
-#    returns = args[1]
-#    nAssets = returns.shape[1]
-#    L_matrix = np.zeros((nAssets, nAssets),float)
-#    '''create the LPM for comovements in several assets to add to the rest of the matrix'''
-#    for i in range(nAssets):
-#        for j in range(nAssets):
-#            if isinstance(returns, pd.DataFrame):
-#                L_matrix[i,j] = CO_LowerPartialMoments(returns[indices[i]],returns[indices[j]])
-#            elif isinstance(returns, np.ndarray):
-#                L_matrix[i,j] = CO_LowerPartialMoments(returns[:,i],returns[:,j])
-#    
-#    return PF_variance(x, L_matrix)
-#
-##constraint1
-#def expected_return_constraint_LPM(x):
-#    if len(x.shape)==1:
-#        x = np.asmatrix(x).T
-#    constraint = np.dot(x.T, exprets_LPM) - exp_ret_chosen_LPM
-#    return float(constraint)
-#constraint2
-# see method weight_constraint in Risk Parity Portfolio
+def lpm_port_noshort(estMu, corrReturns, exp_ret_chosen = 0.02):
+    global exp_ret_chosen_LPM
+    global exprets_LPM
+    exprets_LPM = estMu
+    exp_ret_chosen_LPM = exp_ret_chosen / 12
+    nAssets = len(estMu)
+    def expected_return_constraint_LPM(x):
+        if len(x.shape)==1:
+            x = np.asmatrix(x).T
+            constraint = np.dot(x.T, exprets_LPM) - exp_ret_chosen_LPM
+        return float(constraint)
+    def LPM_PF_optimization(x, args):
+        returns = args[1]
+        nAssets = returns.shape[1]
+        L_matrix = np.zeros((nAssets, nAssets),float)
+        '''create the LPM for comovements in several assets to add to the rest of the matrix'''
+        for i in range(nAssets):
+            for j in range(nAssets):
+                if isinstance(returns, pd.DataFrame):
+                    L_matrix[i,j] = CO_LowerPartialMoments(returns[indices[i]],returns[indices[j]])
+                elif isinstance(returns, np.ndarray):
+                    L_matrix[i,j] = CO_LowerPartialMoments(returns[:,i],returns[:,j])
+        return PF_variance(x, L_matrix)
+    w0 = np.random.rand(nAssets)
+    cons = ({'type' : 'eq', 'fun' : weight_constraint},
+                    {'type' : 'eq', 'fun' : expected_return_constraint_LPM},
+                    {'type': 'ineq', 'fun': long_only_constraint})
+    optimization = minimize(LPM_PF_optimization, 
+                            w0, 
+                            args = [exp_ret_chosen_LPM, corrReturns],
+                            method = 'SLSQP', 
+                            constraints = cons,
+                            options={'ftol': 1e-8, 'maxiter' : 45, 'disp' : False})
+    PF_weights_LPM = np.asmatrix(optimization.x).T
+    return PF_weights_LPM
+
+
+
+
 
 # #############################################################################
     
@@ -802,11 +1045,66 @@ def hrpMC(numIters=10000, nObs=520, size0=5, size1=5, mu0=0, sigma0=1e-2,
 
 
 def SharpeRatio(returns, rf):
+    
+    if len(returns.shape)==1:
+        returns = np.asmatrix(returns).T
+    if len(rf.shape) == 1:
+        rf = np.asmatrix(rf).T
     d = returns - rf
-    mean_d = np.mean(d)
-    stdev_d = np.std(d, ddof=1)
-    SR = mean_d / stdev_d
-    return SR
+    mean_d = float(np.mean(d))
+    stdev_d = float(np.std(d, ddof=1))
+    return mean_d / stdev_d
+
+
+def rollingSharpe(returns, rf, roll_window = 60):
+    #default rolling window is 5 years
+    #returns a dataframe of sharpe ratios for the whole window
+    # both returns and rf should be dataframes
+    if isinstance(rf, np.ndarray):
+        rf = pd.DataFrame(rf, index = returns.index, columns = ["rf_rate"])
+        
+    result = []
+    dates = returns.index[roll_window:]
+    
+    for i in range(len(returns) - roll_window):
+        ret_window = np.array(returns[i:roll_window+i])
+        rf_window = np.array(rf[i:roll_window+i])
+        result.append(SharpeRatio(ret_window, rf_window))
+
+    result = pd.DataFrame(result, index = dates, columns = ["RollingSR"])
+    return result
+
+
+def rollingVar(returns, roll_window = 60):
+    #default rolling window is 5 years
+    #returns a dataframe of sharpe ratios for the whole window
+    # returns should be in dataframe format
+    result = []
+    dates = returns.index[roll_window:]
+    
+    for i in range(len(returns) - roll_window):
+        ret_window = np.array(returns[i:roll_window+i])
+        result.append(ValueAtRisk(ret_window, alpha = 0.05))
+        
+    result = pd.DataFrame(result, index = dates, columns = ["RollingVaR"])
+    return result
+
+
+
+
+#
+#def SharpeRatio(returns, rf):
+#    
+#    if len(returns.shape)==1:
+#        returns = np.asmatrix(returns).T
+#    if len(rf.shape) == 1:
+#        rf = np.asmatrix(rf).T
+#    
+#    d = returns - rf
+#    mean_d = np.mean(d)
+#    stdev_d = np.std(d, ddof=1)
+#    SR = mean_d / stdev_d
+#    return float(SR)
 
 def BetaRegression(returns, marketReturns, rf):
     X = marketReturns - rf
@@ -837,9 +1135,9 @@ def beta(returns, market):
         returns = np.asmatrix(returns).T
     if len(market.shape)==1:
         market = np.asmatrix(market).T
-    m = np.concatenate((returns, market), axis = 1)
+    m = np.concatenate((returns, market.iloc[:-1]), axis = 1)
     # Return the covariance of m divided by the standard deviation of the market returns
-    return np.cov(m, ddof=1)[0][1] / np.std(market)
+    return float(np.cov(m, ddof=1)[0][1] / np.std(market))
 
 def InformationRatio(returns, marketReturns):
     X = marketReturns
@@ -858,19 +1156,27 @@ def turnover(weights_t_0, return_t, weights_t_1):
     diff_weights = abs(weights_t_1 - weights_end_t_0)
     return sum(diff_weights)[0,0]
 
+
+
 def LowerPartialMoments(returns, target = 0, order = 2):
     # This method returns a lower partial moment of the returns
     # Create an array he same length as returns containing the minimum return target
     # order = 1 for target shortfall
     # order = 2 for target semivariance
-    target_array = np.empty(len(returns))
+    if len(returns.shape)==1:
+        returns = np.asmatrix(returns).T
+        
+    target_array = np.asmatrix(np.empty(len(returns))).T
     target_array.fill(target)
     # Calculate the difference between the threshold and the returns
-    diff = target_array - returns
+    diff = np.subtract(target_array, returns)
     # Set the minimum of each to 0
     diff = np.clip(diff, a_min = 0, a_max = None)
     # Return the mean of the n-th powered difference
-    return np.sum(diff ** order) / len(returns)
+    sqdiff = np.array([float(i) ** order for i in diff])
+    result = np.sum(sqdiff) / len(returns)
+    
+    return float(result)
 
 
 def lpm_test_equivalence_diego(returns, target = 0, order = 2):
@@ -1015,7 +1321,7 @@ def ValueAtRisk(returns, alpha = 0.05):
     # Calculate the index associated with alpha
     index = int(alpha * len(sorted_returns))
     # VaR should be positive
-    return abs(sorted_returns[index])
+    return float(abs(sorted_returns[index]))
  
     '''Integer must be rounded down always or not?'''
     
@@ -1078,7 +1384,12 @@ def utility(estimatedWeights, gamma):
     estUtility = np.float(utility_MV(estMu,estSigma,gamma))
     return estUtility
 
+def exp_utility(r_p, sigma_p, gamma):
+    return -np.exp(- gamma * (1 + r_p - 0.5 * gamma * sigma_p ** 2))
 
+def certainty_equivalent(exp_util, gamma):
+    '''Assume W_0 = 1'''
+    return np.log(-exp_util) / (- gamma)
 
 
 # #############################################################################
@@ -1112,7 +1423,22 @@ def plot_histogram(x, filename):
     plt.show()
     return
 
-def plot_emphasize_periods(data_to_plot, period_to_highlight, name):
+#def plot_emphasize_periods(data_to_plot, period_to_highlight, name, color = '#be8cdb'):
+#    '''data_to_plot: pd.Dataframe to plot
+#       name: str , the name of the file and title of the graph 
+#       period_to_highlight: list of lists. Each of these lists contain datetime.date elements
+#       
+#       EXAMPLE: plot_emphasize_periods(returns, "exampleName", stressed_period)'''
+#    plt.figure(figsize = (10, 5))
+#    plt.plot(data_to_plot)
+#    plt.title(str(name))
+#    for i in range(len(period_to_highlight)):
+#        plt.axvline(x = period_to_highlight[i][-1], linewidth=0.4, color = '#be8cdb')
+#        plt.axvspan(period_to_highlight[i][0], period_to_highlight[i][-1], alpha=0.5)
+#    plt.savefig(str(name)+'.svg')
+#    plt.show()
+
+def plot_emphasize_periods(data_to_plot, period_to_highlight, name, col = '#be8cdb'):
     '''data_to_plot: pd.Dataframe to plot
        name: str , the name of the file and title of the graph 
        period_to_highlight: list of lists. Each of these lists contain datetime.date elements
@@ -1121,13 +1447,27 @@ def plot_emphasize_periods(data_to_plot, period_to_highlight, name):
     plt.figure(figsize = (10, 5))
     plt.plot(data_to_plot)
     plt.title(str(name))
-    for i in range(len(period_to_highlight)):
-        plt.axvline(x = period_to_highlight[i][-1], linewidth=0.4, color = '#00C78C')
-        plt.axvspan(period_to_highlight[i][0], period_to_highlight[i][-1], alpha=0.5, color='#FFE4B5')
-    plt.savefig(str(name)+'.svg')
+#    plt.axvline(x = period_to_highlight[][-1], linewidth=0.4, color = '#be8cdb')
+    plt.axvspan(period_to_highlight[0][0], period_to_highlight[1][0], alpha=0.5, color = col)
+    plt.savefig(str(name)+'.png', dpi = 400)
     plt.show()
 
     
+def plot_emphasize_more_periods(data_to_plot, periods, name, colors = ['#d4ffa3', "#bcdbff"]):
+    '''data_to_plot: pd.Dataframe to plot
+       name: str , the name of the file and title of the graph 
+       period_to_highlight: list of lists. Each of these lists contain datetime.date elements
+       
+       EXAMPLE: plot_emphasize_periods(returns, "exampleName", stressed_period)'''
+    plt.figure(figsize = (10, 5))
+    plt.plot(data_to_plot)
+    plt.title(str(name))
+    for i in range(len(periods)):
+        plt.axvspan(periods[i][0], periods[i][-1], alpha=0.5, color = colors[i])
+#        plt.axvline(x = period_to_highlight[][-1], linewidth=0.4, color = '#be8cdb')
+    plt.savefig(str(name)+'.png', dpi = 400)
+    plt.show()
+
     
 # https://github.com/quantopian/pyfolio/blob/master/pyfolio/plotting.py
 def plot_monthly_returns_heatmap(returns, ax=None, **kwargs):
