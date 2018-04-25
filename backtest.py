@@ -1,7 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Fri Mar 23 22:19:04 2018
-"""
 
 import getpass as gp
 global name 
@@ -12,85 +8,119 @@ sys.path.append('/Users/%s/OneDrive/Master Thesis/Data/Analysis_Skripts/Library/
 from datetime import datetime
 from datetime import timedelta
 from dateutil.relativedelta import relativedelta
-
+from openpyxl import load_workbook
+from openpyxl import Workbook
 from Functions import *
 
-def backtester_NEW2(start, end, file, save = False, gamma = 1):
+
+def backtester_NEW2(start, end, file, gamma, save = False):
 
     os.chdir("/Users/%s/OneDrive/Master Thesis/Data" %name)
-    years = int(file[-5:-4])
+            
+    if file[:3]=="GUW" or file[:3]=="our" or file[:3]=="Mea":
+        if int(file[14]) == 1:
+            years = 10
+        else:
+            years = int(file[14])
+    else:
+        if int(file[-5]) == 0:
+            years = 10
+        else:
+            years = int(file[-5])
+    
+    
     freq = 'M'
     returns, rf_rate, market, estLength, nAssets = get_Data(freq, years) # years of estimation
     
     os.chdir("/Users/%s/OneDrive/Master Thesis/Data/Portfolios/" %name)
-    df_weights = convertCSV_toDataframe(file)
-
+#    df_weights = convertCSV_toDataframe(file)
+    df_weights = convertCSV_toDataframeTEST(file)
+    
     datesformat = "%Y-%m-%d"
     initial_date_backtest = datetime.strptime(start, datesformat)
     final_date_backtest = datetime.strptime(end, datesformat)
     
-    windows_returns = returns.loc[initial_date_backtest : final_date_backtest]
-    windows_weights = df_weights.loc[initial_date_backtest - relativedelta(months = 1) : final_date_backtest - relativedelta(months = 1)]
+    windows_returns = returns.loc[initial_date_backtest + relativedelta(months = 1)  : final_date_backtest + relativedelta(months = 1)]
+#    windows_weights = df_weights.loc[initial_date_backtest - relativedelta(months = 1) : final_date_backtest - relativedelta(months = 1)]
     nAssets = len(windows_returns.columns)
     market_window = market.loc[initial_date_backtest : final_date_backtest]
     '''important that the weights are selected in the period right before the initial date to backtest'''
 
     
     histRet = np.zeros((1, nAssets))
-    retAssets = np.zeros((len(windows_returns.index), nAssets))
     retPF = np.zeros((len(windows_returns.index), 1))    
     turnover_pf = np.zeros((len(windows_returns.index), 1))    
+    w_risky_vector = np.zeros((len(windows_returns.index), 1))    
+    
+    total_w_old = np.asmatrix(np.zeros(nAssets)).T
+    
     
     for n in range(len(windows_returns.index)):
         
-        rf_ann_window = rf_rate.loc[initial_date_backtest : final_date_backtest][rf_rate.columns[1]]
-        rf_estimation = rf_rate.loc[initial_date_backtest - relativedelta(months = 60) : initial_date_backtest, :][rf_rate.columns[1]]
-        rf_rate_end_period = rf_rate.loc[final_date_backtest][1]
-        if freq == "M":
-            rf_vect = np.array([(1. + i) ** (1. / 12) - 1 for i in rf_ann_window])
-            rf_estimation = np.array([(1. + i) ** (1. / 12) - 1 for i in rf_estimation])
-            rf_rate_end_period = (1+ rf_rate_end_period) ** (1. / 12) - 1
-        elif freq == "W":
-            rf_vect = np.array([(1. + i) ** (1. / 52) - 1 for i in rf_ann_window])
-            rf_estimation = np.array([(1. + i) ** (1. / 52) - 1 for i in rf_estimation])
-            rf_rate_end_period = (1+ rf_rate_end_period) ** (1. / 52) - 1
-        elif freq == "D":
-            rf_vect = np.array([(1. + i) ** (1. / 365) - 1 for i in rf_ann_window])
-            rf_estimation = np.array([(1. + i) ** (1. / 365) - 1 for i in rf_estimation])            
-            rf_rate_end_period = (1+ rf_rate_end_period) ** (1. / 365) - 1
+        retAssets = windows_returns
+        rf_ann_window = np.asarray(rf_rate.loc[initial_date_backtest : final_date_backtest + relativedelta(months = 1)])
+        rf_estimation = np.asarray(rf_rate.loc[initial_date_backtest - relativedelta(months = estLength) : initial_date_backtest, :])
+        rf_rate_end_period = float(rf_rate.loc[final_date_backtest])
+
+        rf_vect = np.array([(1. + i) ** (1. / 12) - 1 for i in rf_ann_window])
+        rf_estimation = np.array([(1. + i) ** (1. / 12) - 1 for i in rf_estimation])
+        rf_rate_end_period = (1+ rf_rate_end_period) ** (1. / 12) - 1
         
+
         
-        weights_selected = np.array(df_weights.loc[initial_date_backtest + relativedelta(months = n - 1 ) ])
-        weights_next_period = np.array(df_weights.loc[initial_date_backtest + relativedelta(months = n ) ])
+        weights_selected = np.array(df_weights.loc[initial_date_backtest + relativedelta(months = n)])
+
+#        if n == 0:
+#            weights_selected_old = np.asmatrix(np.zeros(nAssets))
+#        else:
+#            weights_selected_old = np.array(df_weights.loc[initial_date_backtest + relativedelta(months = n - 1)])
+#            
+
         
-        histRet = np.array(windows_returns.loc[initial_date_backtest + relativedelta(months = n)])
+        histRet = np.array(windows_returns.loc[initial_date_backtest + relativedelta(months = n + 1)])
         #note the return of the assets are discrete returns
         
         #calculate the amount to invest in the risky asset
         months_back = 12 * years
-        returns_est_past = returns.loc[initial_date_backtest - relativedelta(months = months_back) : initial_date_backtest]
+        returns_est_past = returns.loc[initial_date_backtest - relativedelta(months = months_back - 1) : initial_date_backtest]
         meanRet = returns_est_past.values.mean(axis=0)
         estSigma = np.asmatrix(np.cov(returns_est_past.T, ddof=1))
         
-        pf_ret_ex_ante = PF_return(weights_selected, meanRet)
-        pf_sigma_ex_ante = np.sqrt(PF_variance(weights_selected, estSigma))
-        
-        rf = rf_estimation.mean()
-        w_risky_portfolio = weight_risky_assets(pf_ret_ex_ante, rf, pf_sigma_ex_ante, gamma)
-        pf_total_return = PF_return_risky_rf(w_risky_portfolio, weights_selected, meanRet, rf)
-        pf_total_sigma = PF_sigma_risky_rf(w_risky_portfolio, weights_selected, estSigma) 
+        if file[:3]=="GUW":
+            w_risky_portfolio = weights_selected.sum()
+            pf_total_return = PF_return(weights_selected, histRet)
+#            pf_total_sigma = PF_volatility(weights_selected, estSigma)
+            
+        else:
+            pf_ret_ex_ante = PF_return(weights_selected, meanRet)
+            pf_sigma_ex_ante = np.sqrt(PF_variance(weights_selected, estSigma))
+            rf = float(rf_vect[n])
+            
+            w_risky_portfolio = weight_risky_assets(pf_ret_ex_ante, rf, pf_sigma_ex_ante, gamma)
+            pf_total_return = PF_return_risky_rf(w_risky_portfolio, weights_selected, histRet, rf)
+#            pf_total_sigma = PF_sigma_risky_rf(w_risky_portfolio, weights_selected, estSigma)
 
+        w_risky_vector[n,:] = w_risky_portfolio
         retPF[n,:] = pf_total_return
-        turnover_pf[n,:] = turnover(weights_selected, histRet, weights_next_period)
         
-    
-    
-    sharpeRatio_assets = np.array([SharpeRatio(retAssets[:,i], rf_vect) for i in range(retAssets.shape[1])])
-    sharpeRatio_portfolio = SharpeRatio(retPF, rf_vect)
+        w_now = w_risky_portfolio * weights_selected
+        if n > 0:
+            total_w_old = w_old * weights_selected_old
 
+        turnover_pf[n,:] = turnover(total_w_old, histRet, w_now)
+
+        w_old = w_risky_portfolio
+        weights_selected_old = weights_selected
+    
+    #sharpe ratio
+    sharpeRatio_assets = np.array([SharpeRatio(retAssets.iloc[:,1], rf_vect[1:]) for i in range(retAssets.shape[1])])
+    sharpeRatio_portfolio = SharpeRatio(retPF, rf_vect[1:])
+    
+    #certainty equivalent for the strategy
+    CE = utility_MV(float(np.mean(retPF)), float(np.std(retPF, ddof=1)), gamma)
     #discrete return for the whole period
     
-    treynorRatio_portfolio = TreynorRatio_Diego(retPF, market_window, rf_vect)
+#    treynorRatio_portfolio = TreynorRatio_Diego(retPF, market_window, rf_vect)
     LPM = LowerPartialMoments(retPF)
     drawdown = DrawDown(retPF, time_span = estLength)
     max_drowdown = MaximumDrawDown(retPF)
@@ -107,10 +137,18 @@ def backtester_NEW2(start, end, file, save = False, gamma = 1):
     ES = ExpectedShortfall(retPF_1, alpha = 0.05)
     
     performance = {}
+    if file[:3]=="GUW":
+        epsilon = float(file[-7:-4])
+        performance["epsilon"] = epsilon
+    performance["average return"] = np.mean(retPF)
+    performance["standard deviation"] = np.std(retPF, ddof=1)
+    performance["Certainty Equivalent"] = CE
+    performance["INFO"] = file
     performance["start date"] = initial_date_backtest
     performance["end date"] = final_date_backtest
+    performance["gamma"] = gamma
     performance["SHARPE"] = sharpeRatio_portfolio
-    performance["TREYNOR"] = treynorRatio_portfolio
+#    performance["TREYNOR"] = treynorRatio_portfolio
     performance["Turnover"] = turnover_pf_sum
     performance["LOWER PARTIAL MOMENT"] = LPM    
     performance["DRAWDOWN"] = drawdown       
@@ -122,20 +160,54 @@ def backtester_NEW2(start, end, file, save = False, gamma = 1):
     performance["VAR"] =  VaR
     performance["ES"] =  ES
     
+    performance_output = pd.Series(performance).to_frame(name='Performance Indicators')
     retAssets = pd.DataFrame(retAssets, index = windows_returns.index, columns = windows_returns.columns.values)
-    retPF = pd.Series(retPF.reshape(len(retPF)), index = windows_returns.index)
+    retPF = pd.Series(retPF.reshape(len(retPF)), index = windows_returns.index).to_frame(name = "PF returns")
+    w_risky_vector = pd.Series(w_risky_vector.reshape(len(w_risky_vector)), index = windows_returns.index).to_frame(name = "Omega_risky")
+    turnover_pf = pd.Series(turnover_pf.reshape(len(turnover_pf)), index = windows_returns.index).to_frame(name = "Turnover")
+    #calculates the rolling sharpe ratio
+    roll_sharpe = rollingSharpe(retPF, rf_vect[1:], roll_window = estLength)
+    #calculates the rolling VaR
+    roll_VaR = rollingVar(retPF, roll_window = estLength)
     
     if save:
-        filename_bt = datetime.today().strftime("%Y-%m-%d-%H-%M-%S")
-        if not os.path.exists('/Users/{}/OneDrive/Master Thesis/Data/Portfolios/backtesting/{}'.format(name, filename_bt)):
-            os.makedirs('/Users/{}/OneDrive/Master Thesis/Data/Portfolios/backtesting/{}'.format(name, filename_bt))
+        location = "start_{}".format(initial_date_backtest.year)
+        folder_simul = "BT_{}_{}_{}".format(file[:-4], start, end)
+        filename_bt = "{}_gamma-{}".format(datetime.today().strftime("%Y-%m-%d-%H"), gamma)
+        if not os.path.exists('/Users/{}/OneDrive/Master Thesis/Data/Portfolios/backtesting/{}/{}'.format(name, location, folder_simul)):
+            os.makedirs('/Users/{}/OneDrive/Master Thesis/Data/Portfolios/backtesting/{}/{}'.format(name, location, folder_simul))
     
-        os.chdir('/Users/{}/OneDrive/Master Thesis/Data/Portfolios/backtesting/{}'.format(name, filename_bt))
-        retAssets.to_csv('return_asset_backtest_{}_{}_{}Y_{}_{}_.csv'.format(file[:-4], freq, str(years), start, end))    
-        retPF.to_csv('portfolio_return_backtest_{}_{}_{}Y_{}_{}_.csv'.format(file[:-4], freq, str(years), start, end))    
-    for key, value in performance.items():print("{} : {}".format(key,value))
-    if save:
-        performance_output = pd.Series(performance, name='Performance Indicators')
-        performance_output.to_csv('portfolio_performance_{}_{}_{}Y_{}_{}_.csv'.format(file[:-4], freq, str(years), start, end))
-    return  retAssets, retPF, performance
+        os.chdir('/Users/{}/OneDrive/Master Thesis/Data/Portfolios/backtesting/{}/{}'.format(name, location, folder_simul))
 
+#        old way of saving in cvs
+#        retAssets.to_csv('ret_assets_{}_{}_{}Y_{}_{}_.csv'.format(file[:-4], freq, str(years), start, end))    
+#        retPF.to_csv('PF_rets_{}_{}_{}Y_{}_{}_.csv'.format(file[:-4], freq, str(years), start, end))    
+#        performance_output.to_csv('PF_performance_{}_{}_{}Y_{}_{}_.csv'.format(file[:-4], freq, str(years), start, end))
+
+#        write to excel file
+        writer = pd.ExcelWriter('/Users/{}/OneDrive/Master Thesis/Data/Portfolios/backtesting/{}/{}/{}.xlsx'.format(name, location, folder_simul, filename_bt))
+        performance_output.to_excel(writer,  sheet_name = 'Performance Indicators')
+        roll_sharpe.to_excel(writer, sheet_name = "Rolling Sharpe")
+        roll_VaR.to_excel(writer, sheet_name = "Rolling VaR")
+        turnover_pf.to_excel(writer, sheet_name = "Turnover")
+        w_risky_vector.to_excel(writer, sheet_name = "Amount_in_Risky_Asset")
+        retPF.to_excel(writer,  sheet_name = 'PF_returns')
+        retAssets.to_excel(writer,  sheet_name='asset_returns')
+        writer.save()
+
+#    print()
+#    for key, value in performance.items():
+#        print("{} : {}".format(key,value))
+#        print()
+#        
+#    print()
+
+    if file[:3]=="GUW":
+        info_estimation = freq + str(years)
+        return  retAssets, retPF, performance, file, gamma, float(np.mean(retPF)), float(np.std(retPF, ddof=1)), sharpeRatio_portfolio, turnover_pf_sum, LPM, drawdown, VaR, initial_date_backtest, final_date_backtest, epsilon, info_estimation, CE                     
+    elif file[:3]=="our":
+        info_estimation = freq + str(years)
+        return  retAssets, retPF, performance, file, gamma, float(np.mean(retPF)), float(np.std(retPF, ddof=1)), sharpeRatio_portfolio, turnover_pf_sum, LPM, drawdown, VaR, initial_date_backtest, final_date_backtest, info_estimation, CE
+    else:
+        info_estimation = freq + str(years)
+        return  retAssets, retPF, performance, file, gamma, float(np.mean(retPF)), float(np.std(retPF, ddof=1)), sharpeRatio_portfolio, turnover_pf_sum, LPM, drawdown, VaR, initial_date_backtest, final_date_backtest, info_estimation, CE
