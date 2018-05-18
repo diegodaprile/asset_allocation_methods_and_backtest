@@ -1,13 +1,4 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Feb 13 11:27:55 2018
 
-@author: Diego Carlo
-"""
-
-
-##############################Libraries########################################
 
 import getpass as gp
 global name 
@@ -24,15 +15,12 @@ from Functions import *
 
 
 
-##########################Variables and Data###################################
-
 freq = 'M'
 years = 7
 
 returns, rf_rate, market, estLength, nAssets = get_Data(freq, years) # years of estimation
 
 
-##############################Application######################################
 
 datesPF = returns.index.values[(estLength-1):(len(returns.index)-1)] #Index dates for dataframe
 datesImpl = returns.index.values[(estLength):(len(returns.index))] #Index dates for dataframe
