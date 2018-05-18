@@ -1,13 +1,3 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Feb 13 11:27:55 2018
-
-@author: Diego Carlo
-"""
-
-
-##############################Libraries########################################
 
 import getpass as gp
 global name 
@@ -22,15 +12,10 @@ import sys
 sys.path.append('/Users/%s/OneDrive/Master Thesis/Data/Analysis_Skripts/Library/' %name)
 from Functions import *
 
-
-##########################Variables and Data###################################
-
 freq = 'M'
 years = 8
 
 returns, rf_rate, market, estLength, nAssets = get_Data(freq, years) # years of estimation
-
-##############################Application######################################
 
 
 
