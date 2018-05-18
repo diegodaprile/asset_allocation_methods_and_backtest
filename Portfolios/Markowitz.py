@@ -1,6 +1,4 @@
 
-##############################Libraries########################################
-
 import getpass as gp
 global name 
 name = gp.getuser()
@@ -16,19 +14,11 @@ from Functions import *
 
 
 
-
-
-##########################Variables and Data###################################
-
-
-
 freq = 'M'
 years = 10
 
 returns, rf_rate, market, estLength, nAssets = get_Data(freq, years) # years of estimation
 
-
-##############################Application######################################
 
 
 datesPF = returns.index.values[(estLength-1):(len(returns.index)-1)] #Index dates for dataframe
