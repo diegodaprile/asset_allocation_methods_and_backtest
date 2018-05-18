@@ -1,11 +1,3 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Feb 13 11:27:55 2018
-
-@author: Moritz
-"""
-
 
 ##############################Libraries########################################
 
