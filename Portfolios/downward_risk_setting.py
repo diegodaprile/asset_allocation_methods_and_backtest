@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Mar 14 16:09:59 2018
-
-@author: DiegoCarlo
-"""
-##############################Libraries########################################
 
 import getpass as gp
 name = gp.getuser()
@@ -19,7 +11,8 @@ import sys
 sys.path.append('/Users/%s/OneDrive/Master Thesis/Data/Analysis_Skripts/Library/' %name)
 from Functions import *
 from scipy.optimize import minimize
-############################ Variables and Data ###############################
+
+
 freq = 'M'
 years = 5
 
@@ -72,10 +65,6 @@ df_retPF = pd.DataFrame(retPF_LPM, index = datesImpl)
 Portfolios_weights = pd.DataFrame(LPM_pfs_dyn, index = datesPF, columns = indices)     
 Portfolios_weights.to_csv('Portfolios_downward_risk_setting_%s.csv' %freq)
 
-#
-
-
-###############################################################################
 
 global exp_ret_chosen_LPM
 global exprets_LPM
@@ -112,8 +101,6 @@ optimization = minimize(LPM_PF_optimization,
                         options={'ftol': 1e-12, 'maxiter' : 400, 'disp' : True})
 
 weights_optimization = np.asmatrix(optimization.x).T
-
-###############################################################################
 
 
 # WITH CONSTRAINTS OF NO MORE THAN LEVERAGING / SHORTING 2 TIMES
