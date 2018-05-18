@@ -1,12 +1,3 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Feb 13 11:27:55 2018
-
-@author: Moritz
-"""
-
-##############################Libraries########################################
 
 import getpass as gp
 name = gp.getuser()
@@ -20,17 +11,10 @@ import sys
 sys.path.append('/Users/%s/OneDrive/Master Thesis/Data/Analysis_Skripts/Library/' %name)
 from Functions import *
 
-
-##########################Variables and Data###################################
-
 freq = 'M'
 years = 5
 
 get_Data(freq, years)
-
-
-
-##############################Application######################################
 
 
 #Index dates for dataframe
