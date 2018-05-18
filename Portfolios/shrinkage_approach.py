@@ -1,12 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Created on Sun Feb 25 12:01:32 2018
-
-@author: DiegoCarlo
-"""
-
-##############################Libraries########################################
 
 import getpass as gp
 name = gp.getuser()
@@ -21,19 +12,10 @@ sys.path.append('/Users/%s/OneDrive/Master Thesis/Data/Analysis_Skripts/Library/
 from Functions import *
 from sklearn.covariance import ledoit_wolf as LW, oas, shrunk_covariance
 
-
-
-##########################Variables and Data###################################
-
-
 freq = 'M'
 years = 10
 
 returns, rf_rate, market, estLength, nAssets = get_Data(freq, years) # years of estimation
-
-
-
-###################Application of LW and OAS Shrinkage#########################
 
 
 #Index dates for dataframe
