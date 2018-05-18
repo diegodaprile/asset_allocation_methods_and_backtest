@@ -1,23 +1,3 @@
-# #############################################################################
-    
-# Table of Content
-
-# #############################################################################
-
-# Libraries
-# General Functions
-# Portfolio optimization related functions
-# Garlappi Uppal Wang Functions
-# Risk Parity
-# Hierarchical Risk Parity
-# Risk Metrics
-# Plotting Functions
-
-
-# #############################################################################
-
-'''Library of Functions for Portfolio Calculations'''
-
 
 
 # numpy
@@ -75,10 +55,8 @@ np.random.seed(123)
 
 
 def get_Data(freq, years):
-    #    globals() [returns, rf_rate, estLength, nAssets]
-    #change directory
+    '''Import main data into python'''
     os.chdir("/Users/%s/OneDrive/Master Thesis/Data" %name)
-    #import from excel file with worksheet name Return_Data
     file = 'data_main.xlsx'
     xl = pd.ExcelFile(file)
     returns = xl.parse('Return_Data_M', index_col = 'Code')
@@ -92,10 +70,8 @@ def get_Data(freq, years):
 
 
 def get_Data_control(freq, years):
-    #    globals() [returns, rf_rate, estLength, nAssets]
-    #change directory
+    '''Import control data into python'''
     os.chdir("/Users/%s/OneDrive/Master Thesis/Data" %name)
-    #import from excel file with worksheet name Return_Data
     file = 'data_control.xlsx'
     xl = pd.ExcelFile(file)
     returns = xl.parse('Return_Data_M', index_col = 'Code')
@@ -105,25 +81,29 @@ def get_Data_control(freq, years):
     estLength = years * 12    
     return returns, rf_rate, market, estLength, nAssets
 
-#define function for a vector of n random weights that sum up to 1
+
 def rand_weights(n):
+    '''vector of n random weights that sum up to 1'''
     k = np.random.rand(n)
     return k / sum(k)
 
-#define function to calculate volatility based on weights
+
 
 def PF_variance(w, S):
+    '''Calculate Portfolio Variance'''
     if len(w.shape)==1:
         w = np.asmatrix(w).T
     pf_var = np.dot(w.T, np.dot(S, w))
     return float(pf_var)
 
 def PF_volatility(w, S):
+    '''Calculate Portfolio Standard Deviation'''
     S_PF = np.sqrt(PF_variance(w,S))
     return float(S_PF)
 
-#define function to calculate mean portfolio return
+ 
 def PF_return(w, r):
+    '''calculate mean portfolio return'''
     if len(w.shape)==1:
         w = np.asmatrix(w).T
     if len(r.shape) == 1:
@@ -132,24 +112,21 @@ def PF_return(w, r):
     return float(R_PF)
 
 def PF_return_risky_rf(w_risky, w_portfolio, mean_risky, rf):
-    # w_risky is the amount to invest in the risky asset
-    #w_portfolio represent the portfolio weights, that sum to 1
-    
+    '''calculate mean portfolio return for portfolio with risk-free asset'''
     w_portfolio = w_risky * w_portfolio
     ret_risky_part = PF_return(w_portfolio, mean_risky)
-    
     w_rf = 1 - w_risky
     ret_rf_part = w_rf * rf
-    
     return float(ret_risky_part + ret_rf_part)
 
+
+
 def PF_sigma_risky_rf(w_risky, w_portfolio, varCovar):
-    # w_risky is the amount to invest in the risky asset
-    #w_portfolio represent the portfolio weights, that sum to 1
+    '''calculate portfolio standard deviation for portfolio with risk-free asset'''
     return float(abs(w_risky) * np.sqrt(PF_variance(w_portfolio, varCovar)))
 
 def muRet(returns):
-    '''Calculate meean return of return data'''
+    '''Calculate mean return vector of return series'''
     muRet = np.array(returns.mean(axis = 0))
     return muRet
 
@@ -160,6 +137,7 @@ def varCovar(returns):
 
 
 def st_dev_MV_pf(meanRet, varCovar):
+    '''Calculate efficient frontier'''
     e_ret_pf = np.array([0.00001 * x for x in range(4000)])
     varA = np.float(var_A(meanRet, varCovar))
     varB = np.float(var_B(meanRet, varCovar))
@@ -168,15 +146,15 @@ def st_dev_MV_pf(meanRet, varCovar):
     return np.sqrt((varC * e_ret_pf ** 2 - 2 * varB * e_ret_pf + varA) / varD)
 
 def portfolioReturnOutOfSample(weights, returns):
+    '''calculates the performance of the portfolio, given the returns provided'''
     if not isinstance(weights, np.ndarray):
         weights = np.asmatrix(weights).T
-    '''calculates the performance of the portfolio, given the returns provided'''
     retAssets = np.multiply(weights.T, np.exp(returns) - 1)
     return retAssets.sum()
 
 
 def convertCSV_toDataframe(name, sep = ',', index_col = 0):
-    
+        
     df = pd.read_csv(name, sep = ',', index_col = 0)
     dates = [datetime.strptime(df.index.values[i], "%Y-%m-%d") for i in range(len(df.index.values))]
     indices = df.columns.values.tolist()
@@ -206,33 +184,23 @@ def convertCSV_toDataframe_to_date(name, sep = ',', index_col = 0):
 
  
     
-
-#define function to calculate matrix inverse
 def mat_inv(a):
+    '''calculate inverse of a matrix'''    
     inv = np.linalg.inv(a)
     return inv
 
 
-#define a boxing function to calculate x'Sx
-
 def box(x, S, y):
+    '''boxing function to calculate x'Sx'''
     box = np.dot(x.T, np.dot(S, y))
     return box
 
-#define function to create random positive definite correlation matrix
-
-def randCorrelationMat(nAssets, a): 
-    '''a determines around which value correlation will be centered'''
-    randomCorrelation = np.matrix([np.random.randn(nAssets) + np.random.randn(1)*a for i in range(nAssets)])
-    A = randomCorrelation * randomCorrelation.T
-    D_half = np.diag(np.diag(A)**(-0.5))
-    randomCorrelation = D_half*A*D_half
-    return randomCorrelation
 
 def correlation_matrix(returns):
     return np.corrcoef(returns.T)
 
 def cov2cor(X):
+    '''Convert covariance matrix into correlation matrix'''
     D = np.zeros_like(X)
     d = np.sqrt(np.diag(X))
     np.fill_diagonal(D, d)
@@ -251,6 +219,7 @@ def corr_robust(X):
     return pd.DataFrame(shrunk_corr, index=X.columns, columns=X.columns)
 
 def is_pos_def(x):
+    '''Check if matrix is positiv definit'''
     return np.all(np.linalg.eigvals(x) > 0)
 
 
@@ -304,7 +273,7 @@ def var_D(mu, Sigma):
 def meanVarPF_one_fund(meanRet, varCovar, gamma):
     first = mat_inv(varCovar)
     second = meanRet - (var_B(meanRet, varCovar)-gamma)/var_C(varCovar)
-    meanVarWeights = np.array(np.multiply(1 / gamma,
+    meanVarWeights = np.array(np.multiply(1. / gamma,
                               np.dot(first, second)))
     return meanVarWeights
 
@@ -324,7 +293,7 @@ def meanVarPF_one_fund_noshort(meanRet, varCovar, gamma):
 def meanVar_objective(x, args):
     meanRet = args[0]
     varCovar = args[1]
-    gamma = args[2]
+    gamma = float(args[2])
     mu = PF_return(x, meanRet)
     sigma = PF_volatility(x, varCovar)
     J = - utility_MV(mu, sigma, gamma)
@@ -484,9 +453,9 @@ def threeFundSeparationEMP(mu_hat_exc, varCov, estLength, gamma):
                          * ( ratio_1  * np.dot(covInv, mu_hat_exc) 
                          + ratio_2 * mu_hat_g * np.dot(covInv, ones) ))
     
-    weights_scaled = weights_three_fund / weights_three_fund.sum() 
+#    weights_scaled = weights_three_fund / weights_three_fund.sum() 
     
-    return weights_scaled
+    return weights_three_fund
 
 # #############################################################################
     
@@ -559,6 +528,29 @@ def GWweights1(returns, muRet, varcovar, epsilon, gamma):
     return pi
 
 
+def GWweights1_and_PHI_aa(returns, muRet, varcovar, epsilon, gamma):
+    '''calculates the optimal portfolio weights under Garlappi Wang assumptions'''
+    sigmap = optSigma2(returns, muRet, varcovar, epsilon, gamma)
+    invSigma = mat_inv(varcovar)
+    T, N = returns.shape
+    varepsilon = epsilon * ((T - 1.) * N)/(T * (T - N))
+    B = var_B(muRet, varcovar)
+    C = var_C(varcovar)
+    ones = np.ones(varcovar.shape[0])
+    pi =  (np.dot(((1. / gamma) * invSigma) ,
+                    ((1. / (1. + np.sqrt(varepsilon)/(gamma * sigmap)))
+            * np.subtract(muRet, (B - gamma * (1 + np.sqrt(varepsilon)/(gamma * sigmap))) / C * ones)[:,0])))
+    
+    numerator = float(np.sqrt(varepsilon))
+    denominatorA = float(gamma * sigmap)
+    denominatorB = float(numerator)    
+    
+    PHI_aa = numerator / (denominatorA + denominatorB)
+
+    return pi, PHI_aa
+
+
+
 def GWweights2(returns, muRet, varcovar, epsilon, gamma):
     '''calculates the optimal portfolio weights under Garlappi Wang assumptions'''
     T, N = returns.shape
@@ -575,6 +567,24 @@ def GWweights2(returns, muRet, varcovar, epsilon, gamma):
         pi =  (np.dot(((1. / gamma) * invSigma) ,
                         ((1. / (1. + np.sqrt(varepsilon)/(gamma * sigmap)))
                 * np.subtract(muRet, (B - gamma * (1 + np.sqrt(varepsilon)/(gamma * sigmap))) / C * ones)[:,0])))
+        return pi
+
+def GWweights3(returns, muRet, varcovar, epsilon, gamma):
+    '''calculates the optimal portfolio weights under Garlappi Wang assumptions'''
+    T, N = returns.shape
+    sigmap = optSigma2(returns, muRet, varcovar, epsilon, gamma)
+    if sigmap == 10:
+        pi = 10 * np.ones(N)
+        return pi
+    else:
+        invSigma = mat_inv(varcovar)
+        varepsilon = epsilon * ((T - 1.) * N)/(T * (T - N))
+        B = var_B(muRet, varcovar)
+        C = var_C(varcovar)
+        ones = np.ones(varcovar.shape[0])
+        pi =  (np.dot(((1. / gamma) * invSigma) ,
+                        ((1. / (1. + np.sqrt(varepsilon)/(gamma * sigmap)))
+                * np.subtract(muRet, (B - gamma * (1 + np.sqrt(varepsilon)/(gamma * sigmap))) / C * ones))))
         return pi
 
 
@@ -598,10 +608,10 @@ def GWweights_noshort(returns, meanRet, varCovar, epsilon, gamma):
 def GW_objective(x, args):
     meanRet = args[0]
     varCovar = args[1]
-    gamma = args[2]
+    gamma = float(args[2])
     epsilon = args[3]
-    T = args[4]
-    N = args[5]
+    T = float(args[4])
+    N = float(args[5])
     vareps = epsilon * ((T - 1) * N) / (T * (T - N))
     
     r_p = np.dot(x.T,meanRet)
