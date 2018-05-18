@@ -1,13 +1,3 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
-"""
-Created on Tue Feb 13 11:27:55 2018
-
-@author: Moritz
-"""
-
-
-##############################Libraries########################################
 
 from getpass import getuser as gu
 name = gu()
@@ -26,9 +16,6 @@ from scipy.stats.mstats import mode, gmean, hmean
 
 
 
-##########################Variables and Data###################################
-
-
 freq = 'M'
 years = [4, 5, 6, 8, 10]
 
@@ -39,8 +26,6 @@ gamma_list = [0.5, 1, 1.5, 2, 3]
 for y in years:    
     returns, rf_rate, market, estLength, nAssets = get_Data(freq, y)
     
-    
-    ##############################Application######################################
     
     #Index dates for dataframe
     datesPF = returns.index.values[(estLength-1):(len(returns.index)-1)] 
@@ -94,22 +79,3 @@ for y in years:
             GWPortfolios = pd.DataFrame(GWPFdyn, index = datesPF, columns = indices) 
             os.chdir('/Users/%s/OneDrive/Master Thesis/Data/Portfolios/' %name)
             GWPortfolios.to_csv('GUWPortfoliosM{}-gamma{:3.1f}_epsilon{:3.1f}.csv'.format(y, gamma, eps))
-
-#    test = optSigma(returns, epsilon, gamma)
-#    
-#    test1 = GWPortfolios.sum(1)
-#    
-#    
-#    
-#    f, axs = plt.subplots(6, 2, figsize=(10,20))
-#    axs = axs.ravel()
-#    for i in range(11):
-#            axs[i].plot(datesPF, retGW[:,i], linewidth=0.7)
-#            axs[i].set_xlabel("Time")
-#            axs[i].set_ylabel("Return") 
-#    axs[11].plot(datesPF, retPFGW, linewidth=0.7)
-#    
-#    plt.tight_layout()
-#    plt.savefig('GarlappiReturns.svg', bbox_inches='tight')  
-#    plt.show()
-#        
