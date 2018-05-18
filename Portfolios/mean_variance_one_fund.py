@@ -13,8 +13,6 @@ sys.path.append('/Users/%s/OneDrive/Master Thesis/Data/Analysis_Skripts/Library/
 from Functions import *
 
 
-
-##########################Variables and Data###################################
 gamma_list = [0.5, 1.0, 1.5, 2.0, 3.0]
 
 freq = 'M'
@@ -22,7 +20,7 @@ years = 10
 
 returns, rf_rate, market, estLength, nAssets = get_Data(freq, years) # years of estimation
 
-##############################Application######################################
+
 for gamma in gamma_list:
     
     datesPF = returns.index.values[(estLength-1):(len(returns.index)-1)] #Index dates for dataframe
